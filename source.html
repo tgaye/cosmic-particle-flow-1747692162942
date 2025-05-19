@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Particle Flow</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        const sketch = (p) => {
+            // Particle system variables
+            let particles = [];
+            const maxParticles = 500;
+            let colorPalette = [];
+            let lastClickTime = 0;
+            let clickEffectRadius = 0;
+            let isClickEffectActive = false;
+            
+            // Initialize color palette
+            const initColors = () => {
+                colorPalette = [
+                    p.color(255, 107, 107),  // Soft red
+                    p.color(255, 159, 67),   // Orange
+                    p.color(254, 202, 87),   // Yellow
+                    p.color(29, 209, 161),   // Teal
+                    p.color(72, 219, 251),    // Light blue
+                    p.color(120, 111, 166)    // Purple
+                ];
+            };
+            
+            // Particle class
+            class Particle {
+                constructor() {
+                    this.reset();
+                    this.z = p.random(0, 10); // Depth for parallax effect
+                }
+                
+                reset() {
+                    this.pos = p.createVector(
+                        p.random(-100, p.width + 100),
+                        p.random(-100, p.height + 100)
+                    );
+                    this.vel = p.createVector(0, 0);
+                    this.acc = p.createVector(0, 0);
+                    this.maxSpeed = p.random(1, 3) + this.z * 0.1;
+                    this.size = p.random(2, 5) * (1 + this.z * 0.05);
+                    this.color = p.random(colorPalette);
+                    this.life = p.random(100, 200);
+                    this.maxLife = this.life;
+                }
+                
+                update(mouseX, mouseY) {
+                    // Calculate direction to mouse with depth effect
+                    const mouseDist = p.dist(this.pos.x, this.pos.y, mouseX, mouseY);
+                    const dir = p.createVector(mouseX - this.pos.x, mouseY - this.pos.y);
+                    
+                    // Apply force inversely proportional to distance
+                    if (mouseDist > 0) {
+                        const force = 100 * (1 + this.z * 0.2) / mouseDist;
+                        dir.normalize();
+                        dir.mult(force);
+                        this.acc.add(dir);
+                    }
+                    
+                    // Click effect repulsion
+                    if (isClickEffectActive) {
+                        const clickDist = p.dist(this.pos.x, this.pos.y, mouseX, mouseY);
+                        if (clickDist < clickEffectRadius * 2) {
+                            const repulseForce = p.map(clickDist, 0, clickEffectRadius * 2, 10, 0);
+                            const repulseDir = p.createVector(this.pos.x - mouseX, this.pos.y - mouseY);
+                            repulseDir.normalize();
+                            repulseDir.mult(repulseForce);
+                            this.acc.add(repulseDir);
+                        }
+                    }
+                    
+                    // Update physics
+                    this.vel.add(this.acc);
+                    this.vel.limit(this.maxSpeed);
+                    this.pos.add(this.vel);
+                    this.acc.mult(0);
+                    this.life--;
+                    
+                    // Reset particle if it goes off screen or dies
+                    if (this.life <= 0 || 
+                        this.pos.x < -100 || this.pos.x > p.width + 100 ||
+                        this.pos.y < -100 || this.pos.y > p.height + 100) {
+                        this.reset();
+                    }
+                }
+                
+                display() {
+                    const alpha = p.map(this.life, 0, this.maxLife, 0, 255);
+                    const currentColor = p.color(
+                        p.red(this.color),
+                        p.green(this.color),
+                        p.blue(this.color),
+                        alpha
+                    );
+                    
+                    p.noStroke();
+                    p.fill(currentColor);
+                    
+                    // Draw particle with slight glow
+                    p.drawingContext.shadowBlur = this.size * 2;
+                    p.drawingContext.shadowColor = currentColor;
+                    p.ellipse(this.pos.x, this.pos.y, this.size);
+                    
+                    // Reset shadow for performance
+                    p.drawingContext.shadowBlur = 0;
+                }
+            }
+            
+            p.setup = () => {
+                // Create responsive canvas
+                const canvas = p.createCanvas(p.windowWidth, p.windowHeight);
+                canvas.style('display', 'block');
+                
+                // Initialize color palette
+                initColors();
+                
+                // Create particles
+                for (let i = 0; i < maxParticles; i++) {
+                    particles.push(new Particle());
+                }
+                
+                // Smooth animations
+                p.smooth();
+            };
+            
+            p.draw = () => {
+                // Fade background for motion trails
+                p.background(0, 10);
+                
+                // Update mouse position with easing for smoother following
+                const targetX = p.mouseX || p.width / 2;
+                const targetY = p.mouseY || p.height / 2;
+                const easedX = p.lerp(p.width / 2, targetX, 0.1);
+                const easedY = p.lerp(p.height / 2, targetY, 0.1);
+                
+                // Update and display particles
+                for (let particle of particles) {
+                    particle.update(easedX, easedY);
+                    particle.display();
+                }
+                
+                // Handle click effect
+                if (isClickEffectActive) {
+                    clickEffectRadius += 20;
+                    if (clickEffectRadius > p.width * 0.6) {
+                        isClickEffectActive = false;
+                        clickEffectRadius = 0;
+                    }
+                    
+                    // Draw click effect
+                    p.noFill();
+                    p.stroke(255, 255, 255, 150);
+                    p.strokeWeight(2);
+                    p.ellipse(targetX, targetY, clickEffectRadius);
+                }
+            };
+            
+            // Handle window resize
+            p.windowResized = () => {
+                p.resizeCanvas(p.windowWidth, p.windowHeight);
+            };
+            
+            // Handle mouse click/touch
+            p.mousePressed = () => {
+                const now = p.millis();
+                if (now - lastClickTime > 300) { // Debounce clicks
+                    isClickEffectActive = true;
+                    clickEffectRadius = 10;
+                    lastClickTime = now;
+                    
+                    // Change color palette on click for dynamic effect
+                    colorPalette = colorPalette.map(c => {
+                        return p.color(
+                            (p.red(c) + p.random(-50, 50)) % 255,
+                            (p.green(c) + p.random(-50, 50)) % 255,
+                            (p.blue(c) + p.random(-50, 50)) % 255
+                        );
+                    });
+                }
+            };
+            
+            // Handle touch for mobile devices
+            p.touchStarted = () => {
+                p.mousePressed();
+                return false; // Prevent default behavior
+            };
+        };
+        
+        // Create p5 instance in instance mode
+        new p5(sketch);
+    </script>
+</body>
+</html>
